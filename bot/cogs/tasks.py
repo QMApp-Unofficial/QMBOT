@@ -352,18 +352,16 @@ class BackgroundTasks(commands.Cog):
                 sells = int(flow.get("sell", 0))
                 net_flow = buys - sells
 
-                # Trade pressure: capped tighter so big buy waves don't rocket prices
+                # Trade pressure: capped so large buy waves don't rocket prices
                 pressure = max(-0.025, min(0.025, net_flow / max(liquidity, 1)))
 
                 # Mean-reversion: pulls price back toward fair_value each tick
-                # Stronger coefficient (0.15 vs 0.08) so it actually matters
                 reversion = ((fair_value - current_price) / max(fair_value, 1.0)) * 0.15
 
-                # Random noise scaled to volatility (already halved in config)
+                # Random noise scaled to volatility
                 noise = random.uniform(-volatility, volatility)
 
-                # Events: rarer and smaller
-                # 1% chance of crash, 1% chance of boom (was 1.5% each)
+                # Events: 1% chance of crash, 1% chance of boom
                 event_move = 0.0
                 event_kind = None
                 roll = random.random()
@@ -374,22 +372,26 @@ class BackgroundTasks(commands.Cog):
                     event_move = random.uniform(0.04, 0.09)
                     event_kind = "boom"
 
-                # Combine — drift is now near-zero so no automatic inflation
-                pct_change = drift + reversion + pressure + noise + event_move
+                # Drift excluded intentionally — even small positive drift compounds
+                # exponentially over hundreds of 5-min ticks
+                pct_change = reversion + pressure + noise + event_move
                 move_cap   = MAX_EVENT_MOVE if event_kind else MAX_NORMAL_MOVE
                 pct_change = max(-move_cap, min(move_cap, pct_change))
 
                 new_price = max(PRICE_FLOOR, int(round(current_price * (1 + pct_change))))
 
-                # Fair value stays stable — only drifts very slightly with symmetric noise
-                # No upward bias (was fair_value * (1 + drift + fair_noise) which inflated it)
-                fair_noise    = random.uniform(-0.003, 0.003)
-                new_fair_value = max(float(PRICE_FLOOR), fair_value * (1 + fair_noise))
+                # Fair value is pinned to the configured baseline — never drifts.
+                # This is critical: if fair_value creeps up, mean-reversion actively
+                # pulls prices up with it, causing long-term inflation.
+                configured_fair = float(
+                    (DEFAULT_STOCK_CONFIG.get(stock_name) or {}).get("fair_value", fair_value)
+                )
+                new_fair_value = configured_fair
 
                 stock["price"]      = new_price
                 stock["fair_value"] = round(new_fair_value, 2)
                 stock["history"]    = (stock.get("history") or []) + [new_price]
-                stock["history"]    = stock["history"][-240:]   # keep more history for charts
+                stock["history"]    = stock["history"][-240:]
 
                 stocks[stock_name] = stock
                 changed = True
