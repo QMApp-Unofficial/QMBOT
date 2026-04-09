@@ -27,19 +27,34 @@ All moderation tools are grouped under one command:
   /modaction clearwarnings
   /modaction note
   /modaction notes
+
+Owner-only restore command:
+  !modaction restorejson   (attach a .zip in the same message)
 """
 
+import io
+import os
+import shutil
 import time
+import zipfile
 from datetime import timedelta
+from pathlib import Path
 
 import discord
 from discord.ext import commands
 
+from config import DATA_DIR
 from storage import load_data, save_data
-from ui_utils import C, E, embed, error, warn, success
+from ui_utils import C, embed, error, warn, success
 
 WARN_KEY = "mod_warnings"
 NOTE_KEY = "mod_notes"
+
+DATA_PATH = Path(DATA_DIR).resolve()
+
+OWNER_IDS = {
+    734468552903360594,  # replace with your Discord user ID
+}
 
 
 def _get_mod_data(guild_id: str, key: str) -> dict:
@@ -57,6 +72,9 @@ class ModTools(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def _is_owner(self, user_id: int) -> bool:
+        return user_id in OWNER_IDS
+
     @commands.hybrid_group(name="modaction", description="Moderation tools.")
     async def modaction(self, ctx):
         if ctx.invoked_subcommand is None:
@@ -67,7 +85,9 @@ class ModTools(commands.Cog):
                     "`slowmode`, `lock`, `unlock`, `clear`, `kick`, `ban`, `unban`,\n"
                     "`mute`, `unmute`, `nickname`, `addrole`, `removerole`,\n"
                     "`roleinfo`, `rolemembers`, `channelinfo`, `voicemove`, `voicekick`,\n"
-                    "`massrole`, `nuke`, `warn`, `warnings`, `clearwarnings`, `note`, `notes`"
+                    "`massrole`, `nuke`, `warn`, `warnings`, `clearwarnings`, `note`, `notes`\n\n"
+                    "**Backup restore:**\n"
+                    "`!modaction restorejson` with a `.zip` attached"
                 ),
                 C.ADMIN,
             )
@@ -167,7 +187,7 @@ class ModTools(commands.Cog):
         table = "\n".join(f"{r[0].ljust(col_w)}  {r[1]}" for r in rows)
         e = embed(f"#  {ch.name}", f"```\n{table}\n```", C.ADMIN)
         if ch.topic:
-            e.add_field(name="Topic", value=ch.topic[:512], inline=False)
+            e.add_field(name="Topic", value=ch.topic[:1024], inline=False)
         await ctx.send(embed=e)
 
     # ══ MEMBER MANAGEMENT ═════════════════════════════════════════════════════
@@ -395,17 +415,17 @@ class ModTools(commands.Cog):
     async def warnings(self, ctx, member: discord.Member):
         gid = str(ctx.guild.id)
         uid = str(member.id)
-        warnings = _get_mod_data(gid, WARN_KEY).get(uid, [])
+        warning_list = _get_mod_data(gid, WARN_KEY).get(uid, [])
 
-        if not warnings:
+        if not warning_list:
             return await ctx.send(embed=success("No Warnings", f"{member.display_name} has no warnings."))
 
         lines = []
-        for i, w in enumerate(warnings, 1):
+        for i, w in enumerate(warning_list, 1):
             ts = f"<t:{w['at']}:d>" if "at" in w else "Unknown"
             lines.append(f"**#{i}** {ts} — _{w['reason']}_ (by {w['by']})")
 
-        e = embed(f"⚠️  {member.display_name}'s Warnings ({len(warnings)})", "\n".join(lines[-10:]), C.WARN)
+        e = embed(f"⚠️  {member.display_name}'s Warnings ({len(warning_list)})", "\n".join(lines[-10:]), C.WARN)
         e.set_thumbnail(url=member.display_avatar.url)
         await ctx.send(embed=e)
 
@@ -443,17 +463,99 @@ class ModTools(commands.Cog):
     async def notes(self, ctx, member: discord.Member):
         gid = str(ctx.guild.id)
         uid = str(member.id)
-        notes = _get_mod_data(gid, NOTE_KEY).get(uid, [])
+        note_list = _get_mod_data(gid, NOTE_KEY).get(uid, [])
 
-        if not notes:
+        if not note_list:
             return await ctx.send(embed=embed("📝  No Notes", f"No notes for **{member.display_name}**.", C.NEUTRAL))
 
         lines = [
             f"**#{i}** <t:{n['at']}:d> — _{n['text']}_ (by {n['by']})"
-            for i, n in enumerate(notes[-10:], 1)
+            for i, n in enumerate(note_list[-10:], 1)
         ]
-        e = embed(f"📝  Notes for {member.display_name} ({len(notes)})", "\n".join(lines), C.ADMIN)
+        e = embed(f"📝  Notes for {member.display_name} ({len(note_list)})", "\n".join(lines), C.ADMIN)
         await ctx.send(embed=e)
+
+    # ══ RESTORE JSON FROM ZIP ═════════════════════════════════════════════════
+
+    @modaction.command(name="restorejson", description="Restore JSON files from a backup zip (owner only; prefix usage recommended).")
+    async def restorejson(self, ctx):
+        if not self._is_owner(ctx.author.id):
+            return await ctx.send(embed=error("Restore JSON", "Owner only command."))
+
+        if not getattr(ctx.message, "attachments", None):
+            return await ctx.send(embed=error("Restore JSON", "Attach a `.zip` file to the same message."))
+
+        attachment = ctx.message.attachments[0]
+
+        if not attachment.filename.lower().endswith(".zip"):
+            return await ctx.send(embed=error("Restore JSON", "Attachment must be a `.zip` file."))
+
+        DATA_PATH.mkdir(parents=True, exist_ok=True)
+        pre_restore_dir = DATA_PATH / "pre_restore_backup"
+        pre_restore_dir.mkdir(parents=True, exist_ok=True)
+
+        await ctx.send(embed=warn("Restore JSON", "Reading backup zip and restoring JSON files..."))
+
+        try:
+            raw = await attachment.read()
+
+            # Backup existing live jsons first
+            for existing in DATA_PATH.glob("*.json"):
+                backup_target = pre_restore_dir / existing.name
+                try:
+                    shutil.copy2(existing, backup_target)
+                except Exception:
+                    pass
+
+            restored = []
+            skipped = []
+
+            with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                names = zf.namelist()
+                json_members = [name for name in names if name.lower().endswith(".json")]
+
+                if not json_members:
+                    return await ctx.send(embed=error("Restore JSON", "No `.json` files found in that zip."))
+
+                for member in json_members:
+                    filename = os.path.basename(member)
+
+                    if not filename or filename in {".", ".."}:
+                        skipped.append(member)
+                        continue
+
+                    target_path = DATA_PATH / filename
+
+                    with zf.open(member) as src:
+                        data = src.read()
+
+                    with open(target_path, "wb") as f:
+                        f.write(data)
+
+                    restored.append(filename)
+
+            desc_parts = []
+            if restored:
+                lines = "\n".join(f"- `{name}`" for name in restored[:25])
+                if len(restored) > 25:
+                    lines += f"\n...and {len(restored) - 25} more"
+                desc_parts.append(f"**Restored:**\n{lines}")
+
+            if skipped:
+                lines = "\n".join(f"- `{name}`" for name in skipped[:10])
+                if len(skipped) > 10:
+                    lines += f"\n...and {len(skipped) - 10} more"
+                desc_parts.append(f"**Skipped:**\n{lines}")
+
+            desc_parts.append(f"**Path:** `{DATA_PATH}`")
+            desc_parts.append("Current live JSON files were backed up to `pre_restore_backup` first.")
+
+            await ctx.send(embed=success("Restore Complete", "\n\n".join(desc_parts)))
+
+        except zipfile.BadZipFile:
+            await ctx.send(embed=error("Restore JSON", "That file is not a valid zip archive."))
+        except Exception as e:
+            await ctx.send(embed=error("Restore JSON", f"Restore failed: {e}"))
 
     # ══ ERROR HANDLERS ════════════════════════════════════════════════════════
 
