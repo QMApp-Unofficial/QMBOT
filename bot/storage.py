@@ -1,4 +1,7 @@
 import json
+import os
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from config import DATA_DIR
@@ -7,8 +10,11 @@ from config import DATA_DIR
 # Data directory (Railway safe)
 # =========================
 
-DATA_PATH = Path(DATA_DIR)
+DATA_PATH = Path(DATA_DIR).resolve()
 DATA_PATH.mkdir(parents=True, exist_ok=True)
+
+BACKUP_DIR = DATA_PATH / "backups"
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 # =========================
 # File paths
@@ -36,6 +42,18 @@ STICKER_FILE = DATA_PATH / "sticker.json"
 
 ACTIONS_FILE = DATA_PATH / "actions.json"
 
+print("[storage] ===========================")
+print(f"[storage] DATA_DIR = {DATA_PATH}")
+print(f"[storage] BACKUP_DIR = {BACKUP_DIR}")
+print(f"[storage] DATA_DIR exists: {DATA_PATH.exists()}")
+try:
+    print(f"[storage] DATA_DIR entries: {[p.name for p in DATA_PATH.iterdir()]}")
+except Exception as e:
+    print(f"[storage] Could not list DATA_DIR: {e}")
+print(f"[storage] COIN_DATA_FILE = {COIN_DATA_FILE}")
+print(f"[storage] DATA_FILE = {DATA_FILE}")
+print("[storage] ===========================")
+
 # =========================
 # Core JSON helpers
 # =========================
@@ -54,12 +72,22 @@ def _load_json(path: Path, default: Any):
 def _save_json(path: Path, obj: Any):
     """
     Atomic save so Railway crashes cannot corrupt files.
+    Also keeps a backup copy of the old version.
     """
+    temp = path.with_suffix(path.suffix + ".tmp")
 
-    temp = path.with_suffix(".tmp")
+    if path.exists():
+        try:
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            backup_path = BACKUP_DIR / f"{path.stem}.{ts}{path.suffix}.bak"
+            shutil.copy2(path, backup_path)
+        except Exception:
+            pass
 
     with temp.open("w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=4)
+        json.dump(obj, f, indent=4, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
 
     temp.replace(path)
 
@@ -203,7 +231,6 @@ def save_beg_stats(d):
 # =========================
 
 def load_swear_jar():
-
     jar = _load_json(SWEAR_JAR_FILE, {"total": 0, "users": {}})
 
     if not isinstance(jar, dict):
@@ -229,7 +256,6 @@ def save_swear_jar(d):
 # =========================
 
 def load_stickers():
-
     data = _load_json(STICKER_FILE, {"total": 0, "users": {}, "daily": {}})
 
     if not isinstance(data, dict):
