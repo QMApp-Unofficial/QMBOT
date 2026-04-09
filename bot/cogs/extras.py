@@ -49,6 +49,7 @@ Commands:
     /giveaway      - Start a coin giveaway in channel
 
   Misc utility
+    /messagecount  - See how many messages you or another user have sent
     /timer         - Set a countdown timer that pings you
     /remindme      - Remind you of something in X minutes
     /math          - Evaluate a maths expression safely
@@ -87,6 +88,8 @@ import discord
 from discord.ext import commands
 
 from ui_utils import C, E, embed, error, warn, success
+from storage import load_data
+from config import XP_PER_MESSAGE
 
 TENOR_API_KEY = "AIzaSyAyimkuEcdEnPs55ueys84EMt_lFe0BXKQ"
 TENOR_BASE    = "https://tenor.googleapis.com/v2/search"
@@ -244,6 +247,10 @@ def _gif_action(author: discord.Member, target: discord.Member | None,
     e = embed(title, text, color,
               footer=f"{author.display_name}{' → ' + target.display_name if target else ''}")
     return e
+
+
+def _calculate_level(xp: int) -> int:
+    return int(int(xp) ** 0.5)
 
 
 # ── TicTacToe ─────────────────────────────────────────────────────────────────
@@ -1090,6 +1097,34 @@ class Extras(commands.Cog):
         await ctx.send(embed=embed("🎉  Giveaway Started!",
                                    f"**{amount:,}** coins up for grabs!\nEnds in **{duration}s**.",
                                    C.WIN, footer=f"Hosted by {ctx.author.display_name}"))
+
+    # ══ MESSAGE COUNT ══════════════════════════════════════════════════════════
+
+    @commands.hybrid_command(name="messagecount", description="See how many messages you or another user have sent.")
+    async def messagecount(self, ctx, member: discord.Member = None):
+        if not ctx.guild:
+            return await ctx.send(embed=error("Message Count", "This command only works in servers."))
+
+        target = member or ctx.author
+
+        data = load_data()
+        gid  = str(ctx.guild.id)
+        uid  = str(target.id)
+
+        user_data = data.get(gid, {}).get(uid, {})
+        xp        = int(user_data.get("xp", 0))
+        messages  = xp // XP_PER_MESSAGE
+        level     = _calculate_level(xp)
+
+        desc = (
+            f"{'You have' if target == ctx.author else f'{target.display_name} has'} sent "
+            f"**{messages:,}** message(s).\n\n"
+            f"📊 XP: **{xp:,}** · 🏆 Level: **{level}**"
+        )
+
+        e = embed("💬  Message Count", desc, C.NEUTRAL)
+        e.set_thumbnail(url=target.display_avatar.url)
+        await ctx.send(embed=e)
 
     # ══ TIMER / REMINDER ══════════════════════════════════════════════════════
 
