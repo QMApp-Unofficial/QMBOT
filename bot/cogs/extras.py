@@ -1,60 +1,41 @@
 """
 extras.py — trimmed extras cog
 
-Kept slash commands:
-  Games
-    /tictactoe
-    /hangman
-    /guess
-    /hangmanstop
-    /scramble
-    /typerace
-    /truthordare
+Slash commands kept:
 
-  GIFs
-    /gif
+  /game tictactoe
+  /game hangman
+  /game guess
+  /game hangmanstop
+  /game scramble
+  /game typerace
+  /game truthordare
 
-  Lookups / media
-    /define
-    /urban
-    /wikipedia
-    /weather
-    /crypto
-    /meme
-    /dog
-    /cat
-    /fox
-    /duck
+  /gif
 
-  Utility
-    /ping
-    /uptime
-    /botinfo
-    /serverinfo
-    /userinfo
-    /avatar
-    /snowflake
-    /charinfo
-    /color
-    /math
-    /passwordgen
-    /randomuser
-    /randomchannel
+  /ping
+  /uptime
+  /botinfo
+  /serverinfo
+  /userinfo
+  /avatar
+  /snowflake
+  /charinfo
+  /color
+  /math
+  /passwordgen
+  /randomuser
+  /randomchannel
 
-  Economy / misc
-    /moneycount
-    /richcheck
-    /giveaway
-    /messagecount
-    /remindme
-    /timer
+  /moneycount
+  /richcheck
+  /giveaway
+  /messagecount
+  /remindme
+  /timer
 """
 
 import asyncio
-import base64
-import hashlib
-import math
-import operator
 import random
 import re
 import string
@@ -162,6 +143,24 @@ GIF_ACTIONS = {
     "blush": {"query": "anime blush", "title": "😊  Blushing", "needs_target": False, "color": C.MARRIAGE},
     "facepalm": {"query": "anime facepalm", "title": "🤦  Facepalm", "needs_target": False, "color": C.NEUTRAL},
     "sleep": {"query": "anime sleep", "title": "😴  Sleeping", "needs_target": False, "color": C.NEUTRAL},
+    "dog": {"query": "cute dog gif", "title": "🐶  Dog", "needs_target": False, "color": C.MARKET},
+    "cat": {"query": "cute cat gif", "title": "🐱  Cat", "needs_target": False, "color": C.MARRIAGE},
+    "fox": {"query": "cute fox gif", "title": "🦊  Fox", "needs_target": False, "color": C.SHOP},
+    "duck": {"query": "cute duck gif", "title": "🦆  Duck", "needs_target": False, "color": C.TRIVIA},
+}
+
+NON_TARGET_GIF_TEXT = {
+    "cry": "is crying rn.",
+    "laugh": "is losing it.",
+    "dance": "is on the dancefloor.",
+    "smug": "is feeling very smug.",
+    "blush": "is blushing.",
+    "facepalm": "can't even.",
+    "sleep": "is out cold.",
+    "dog": "summoned a dog gif.",
+    "cat": "summoned a cat gif.",
+    "fox": "summoned a fox gif.",
+    "duck": "summoned a duck gif.",
 }
 
 
@@ -189,17 +188,6 @@ async def fetch_gif(query: str) -> str | None:
                 media = chosen.get("media_formats", {})
                 gif = media.get("gif") or media.get("mediumgif") or media.get("tinygif") or {}
                 return gif.get("url")
-    except Exception:
-        return None
-
-
-async def fetch_json(url: str, **params):
-    try:
-        async with aiohttp.ClientSession() as s:
-            async with s.get(url, params=params, timeout=aiohttp.ClientTimeout(total=6)) as r:
-                if r.status != 200:
-                    return None
-                return await r.json()
     except Exception:
         return None
 
@@ -403,8 +391,19 @@ class Extras(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.hybrid_command(name="tictactoe", description="Play TicTacToe against another user.")
-    async def tictactoe(self, ctx, opponent: discord.Member):
+    @commands.hybrid_group(name="game", description="Game commands.")
+    async def game(self, ctx):
+        if ctx.invoked_subcommand is None:
+            await ctx.send(
+                embed=embed(
+                    "🎮  Games",
+                    "Available: `tictactoe`, `hangman`, `guess`, `hangmanstop`, `scramble`, `typerace`, `truthordare`",
+                    C.GAMES,
+                )
+            )
+
+    @game.command(name="tictactoe", description="Play TicTacToe against another user.")
+    async def game_tictactoe(self, ctx, opponent: discord.Member):
         if opponent == ctx.author:
             return await ctx.send(embed=error("TicTacToe", "You can't play yourself."))
         if opponent.bot:
@@ -419,27 +418,27 @@ class Extras(commands.Cog):
         msg = await ctx.send(embed=e, view=view)
         view.message = msg
 
-    @commands.hybrid_command(name="hangman", description="Play hangman (solo).")
-    async def hangman(self, ctx):
+    @game.command(name="hangman", description="Play hangman (solo).")
+    async def game_hangman(self, ctx):
         uid = str(ctx.author.id)
         if uid in _hangman_games:
-            return await ctx.send(embed=warn("Hangman", "You already have a game running. Guess a letter with `/guess <letter>`."))
+            return await ctx.send(embed=warn("Hangman", "You already have a game running. Guess a letter with `/game guess <letter>`."))
         word = random.choice(WORD_LIST)
         _hangman_games[uid] = {"word": word, "guessed": set(), "wrong": 0}
         display = " ".join("_" for _ in word)
         e = embed(
             "🪓  Hangman",
-            f"{HANGMAN_STAGES[0]}\n\n**Word:** `{display}`\n\nGuess a letter with `/guess <letter>`",
+            f"{HANGMAN_STAGES[0]}\n\n**Word:** `{display}`\n\nGuess a letter with `/game guess <letter>`",
             C.GAMES,
             footer=f"6 wrong guesses allowed · Word: {len(word)} letters",
         )
         await ctx.send(embed=e)
 
-    @commands.hybrid_command(name="guess", description="Guess a letter in your hangman game.")
-    async def guess(self, ctx, letter: str):
+    @game.command(name="guess", description="Guess a letter in your hangman game.")
+    async def game_guess(self, ctx, letter: str):
         uid = str(ctx.author.id)
         if uid not in _hangman_games:
-            return await ctx.send(embed=warn("Hangman", "No active game. Start one with `/hangman`."))
+            return await ctx.send(embed=warn("Hangman", "No active game. Start one with `/game hangman`."))
         letter = letter.lower().strip()
         if len(letter) != 1 or not letter.isalpha():
             return await ctx.send(embed=error("Hangman", "One letter at a time please."))
@@ -472,16 +471,16 @@ class Extras(commands.Cog):
         )
         await ctx.send(embed=e)
 
-    @commands.hybrid_command(name="hangmanstop", description="Give up on your current hangman game.")
-    async def hangmanstop(self, ctx):
+    @game.command(name="hangmanstop", description="Give up on your current hangman game.")
+    async def game_hangmanstop(self, ctx):
         uid = str(ctx.author.id)
         if uid not in _hangman_games:
             return await ctx.send(embed=warn("Hangman", "No active game."))
         word = _hangman_games.pop(uid)["word"]
         await ctx.send(embed=embed("🪓  Gave Up", f"The word was **{word}**.", C.NEUTRAL))
 
-    @commands.hybrid_command(name="scramble", description="Unscramble a word to win coins.")
-    async def scramble(self, ctx):
+    @game.command(name="scramble", description="Unscramble a word to win coins.")
+    async def game_scramble(self, ctx):
         uid = str(ctx.author.id)
         if uid in _scramble_games:
             return await ctx.send(embed=warn("Scramble", "You have an active game! Type your answer."))
@@ -522,8 +521,8 @@ class Extras(commands.Cog):
         else:
             await ctx.send(embed=error("Wrong!", f"You said **{msg.content.strip()}**.\nThe word was **{word}**."))
 
-    @commands.hybrid_command(name="typerace", description="Speed typing challenge — fastest wins coins.")
-    async def typerace(self, ctx):
+    @game.command(name="typerace", description="Speed typing challenge — fastest wins coins.")
+    async def game_typerace(self, ctx):
         uid = str(ctx.author.id)
         sent = random.choice(TYPING_SENTENCES)
         _typerace_games[uid] = {"sentence": sent, "start": time.time()}
@@ -565,13 +564,13 @@ class Extras(commands.Cog):
         )
         await ctx.send(embed=e)
 
-    @commands.hybrid_command(name="truthordare", description="Truth or Dare — pick with buttons.")
-    async def truthordare(self, ctx):
+    @game.command(name="truthordare", description="Truth or Dare — pick with buttons.")
+    async def game_truthordare(self, ctx):
         e = embed("😈  Truth or Dare", "Choose your fate…", C.SOCIAL)
         view = TruthOrDareView(ctx.author.id)
         await ctx.send(embed=e, view=view)
 
-    @commands.hybrid_command(name="gif", description="Send a reaction GIF.")
+    @commands.hybrid_command(name="gif", description="Send a reaction or animal GIF.")
     @app_commands.describe(action="Which GIF action to use", member="Optional target user")
     @app_commands.choices(action=[
         app_commands.Choice(name="cuddle", value="cuddle"),
@@ -588,6 +587,10 @@ class Extras(commands.Cog):
         app_commands.Choice(name="blush", value="blush"),
         app_commands.Choice(name="facepalm", value="facepalm"),
         app_commands.Choice(name="sleep", value="sleep"),
+        app_commands.Choice(name="dog", value="dog"),
+        app_commands.Choice(name="cat", value="cat"),
+        app_commands.Choice(name="fox", value="fox"),
+        app_commands.Choice(name="duck", value="duck"),
     ])
     async def gif(self, ctx, action: app_commands.Choice[str], member: discord.Member = None):
         data = GIF_ACTIONS[action.value]
@@ -612,171 +615,12 @@ class Extras(commands.Cog):
             }
             e = _gif_action(ctx.author, member, data["title"], text_map[action.value], data["color"])
         else:
-            text_map = {
-                "cry": f"{ctx.author.mention} is crying rn.",
-                "laugh": f"{ctx.author.mention} is losing it.",
-                "dance": f"{ctx.author.mention} is on the dancefloor.",
-                "smug": f"{ctx.author.mention} is feeling very smug.",
-                "blush": f"{ctx.author.mention} is blushing.",
-                "facepalm": f"{ctx.author.mention} can't even.",
-                "sleep": f"{ctx.author.mention} is out cold.",
-            }
-            e = embed(data["title"], text_map[action.value], data["color"])
+            e = embed(data["title"], f"{ctx.author.mention} {NON_TARGET_GIF_TEXT[action.value]}", data["color"])
 
         gif_url = await fetch_gif(data["query"])
         if gif_url:
             e.set_image(url=gif_url)
 
-        await ctx.send(embed=e)
-
-    @commands.hybrid_command(name="dog", description="Random doggo image.")
-    async def dog(self, ctx):
-        data = await fetch_json("https://dog.ceo/api/breeds/image/random")
-        if not data:
-            return await ctx.send(embed=error("Dog", "Couldn't fetch a dog right now."))
-        e = embed("🐶  Doggo!", "", C.MARKET)
-        e.set_image(url=data.get("message", ""))
-        await ctx.send(embed=e)
-
-    @commands.hybrid_command(name="cat", description="Random cat image.")
-    async def cat(self, ctx):
-        data = await fetch_json("https://api.thecatapi.com/v1/images/search")
-        if not data or not isinstance(data, list):
-            return await ctx.send(embed=error("Cat", "Couldn't fetch a cat right now."))
-        e = embed("🐱  Kitty!", "", C.MARRIAGE)
-        e.set_image(url=data[0].get("url", ""))
-        await ctx.send(embed=e)
-
-    @commands.hybrid_command(name="fox", description="Random fox image.")
-    async def fox(self, ctx):
-        data = await fetch_json("https://randomfox.ca/floof/")
-        if not data:
-            return await ctx.send(embed=error("Fox", "No fox found."))
-        e = embed("🦊  Foxy!", "", C.SHOP)
-        e.set_image(url=data.get("image", ""))
-        await ctx.send(embed=e)
-
-    @commands.hybrid_command(name="duck", description="Random duck image.")
-    async def duck(self, ctx):
-        data = await fetch_json("https://random-d.uk/api/random")
-        if not data:
-            return await ctx.send(embed=error("Duck", "No duck found."))
-        e = embed("🦆  Quack!", "", C.TRIVIA)
-        e.set_image(url=data.get("url", ""))
-        await ctx.send(embed=e)
-
-    @commands.hybrid_command(name="define", description="Look up a word definition.")
-    async def define(self, ctx, word: str):
-        data = await fetch_json(f"https://api.dictionaryapi.dev/api/v2/entries/en/{word.lower()}")
-        if not data or isinstance(data, dict):
-            return await ctx.send(embed=error("Define", f"No definition found for **{word}**."))
-        try:
-            entry = data[0]
-            phonetic = entry.get("phonetic", "")
-            meaning = entry["meanings"][0]
-            pos = meaning["partOfSpeech"]
-            defn = meaning["definitions"][0]["definition"]
-            example = meaning["definitions"][0].get("example", "")
-            desc = f"**{pos}**\n{defn}"
-            if example:
-                desc += f'\n\n*"{example}"*'
-            e = embed(f"📖  {word.capitalize()}{f'  /{phonetic}/' if phonetic else ''}", desc, C.TRIVIA, footer="via Free Dictionary API")
-            await ctx.send(embed=e)
-        except Exception:
-            await ctx.send(embed=error("Define", "Couldn't parse that definition."))
-
-    @commands.hybrid_command(name="urban", description="Urban Dictionary lookup.")
-    async def urban(self, ctx, *, term: str):
-        data = await fetch_json("https://api.urbandictionary.com/v0/define", term=term)
-        if not data or not data.get("list"):
-            return await ctx.send(embed=error("Urban", f"Nothing found for **{term}**."))
-        entry = data["list"][0]
-        defn = entry["definition"][:800].replace("[", "").replace("]", "")
-        example = entry.get("example", "")[:300].replace("[", "").replace("]", "")
-        thumbs = f"👍 {entry.get('thumbs_up', 0)}  👎 {entry.get('thumbs_down', 0)}"
-        desc = defn
-        if example:
-            desc += f'\n\n*"{example}"*'
-        e = embed(f"📚  {term}", desc, C.SOCIAL, footer=f"Urban Dictionary · {thumbs}")
-        await ctx.send(embed=e)
-
-    @commands.hybrid_command(name="wikipedia", description="Get a Wikipedia summary.")
-    async def wikipedia(self, ctx, *, query: str):
-        data = await fetch_json("https://en.wikipedia.org/api/rest_v1/page/summary/" + query.replace(" ", "_"))
-        if not data or data.get("type") == "https://mediawiki.org/wiki/HyperSwitch/errors/not_found":
-            return await ctx.send(embed=error("Wikipedia", f"No article found for **{query}**."))
-        extract = data.get("extract", "No summary available.")[:800]
-        page = data.get("content_urls", {}).get("desktop", {}).get("page", "")
-        e = embed(f"📖  {data.get('title', query)}", extract, C.TRIVIA, footer=f"Wikipedia · {page[:60] if page else ''}")
-        thumb = data.get("thumbnail", {}).get("source")
-        if thumb:
-            e.set_thumbnail(url=thumb)
-        await ctx.send(embed=e)
-
-    @commands.hybrid_command(name="crypto", description="Get a crypto price (e.g. bitcoin, ethereum).")
-    async def crypto(self, ctx, coin: str = "bitcoin"):
-        data = await fetch_json(
-            "https://api.coingecko.com/api/v3/simple/price",
-            ids=coin.lower(),
-            vs_currencies="usd,gbp",
-            include_24hr_change="true",
-        )
-        if not data or coin.lower() not in data:
-            return await ctx.send(embed=error("Crypto", f"Coin **{coin}** not found. Try `bitcoin`, `ethereum`, `dogecoin` etc."))
-        info = data[coin.lower()]
-        usd = info.get("usd", "?")
-        gbp = info.get("gbp", "?")
-        chg = info.get("usd_24h_change", 0)
-        arrow = "📈" if chg >= 0 else "📉"
-        e = embed(
-            f"💰  {coin.capitalize()} Price",
-            f"**USD:** ${usd:,.2f}\n**GBP:** £{gbp:,.2f}\n\n{arrow} 24h: {chg:+.2f}%",
-            C.WIN if chg >= 0 else C.LOSE,
-            footer="via CoinGecko · Not financial advice",
-        )
-        await ctx.send(embed=e)
-
-    @commands.hybrid_command(name="weather", description="Current weather for any city.")
-    async def weather(self, ctx, *, city: str):
-        data = await fetch_json("https://wttr.in/" + city.replace(" ", "+"), format="j1")
-        if not data:
-            return await ctx.send(embed=error("Weather", f"Couldn't get weather for **{city}**."))
-        try:
-            cur = data["current_condition"][0]
-            desc = cur["weatherDesc"][0]["value"]
-            temp_c = cur["temp_C"]
-            temp_f = cur["temp_F"]
-            feels = cur["FeelsLikeC"]
-            humid = cur["humidity"]
-            wind = cur["windspeedKmph"]
-            rows = [
-                ("Condition", desc),
-                ("Temp", f"{temp_c}°C / {temp_f}°F"),
-                ("Feels Like", f"{feels}°C"),
-                ("Humidity", f"{humid}%"),
-                ("Wind", f"{wind} km/h"),
-            ]
-            col_w = max(len(r[0]) for r in rows)
-            table = "\n".join(f"{r[0].ljust(col_w)}  {r[1]}" for r in rows)
-            e = embed(f"🌤️  Weather — {city.title()}", f"```\n{table}\n```", C.MARKET, footer="via wttr.in")
-            await ctx.send(embed=e)
-        except Exception:
-            await ctx.send(embed=error("Weather", "Couldn't parse weather data."))
-
-    @commands.hybrid_command(name="meme", description="Random meme from Reddit.")
-    async def meme(self, ctx):
-        subs = ["memes", "dankmemes", "AdviceAnimals", "me_irl", "terriblefacebookmemes"]
-        sub = random.choice(subs)
-        data = await fetch_json(f"https://meme-api.com/gimme/{sub}")
-        if not data or data.get("nsfw"):
-            return await ctx.send(embed=error("Meme", "Couldn't fetch a safe meme right now."))
-        e = embed(
-            f"😂  {data.get('title', 'Meme')[:100]}",
-            "",
-            C.SOCIAL,
-            footer=f"r/{data.get('subreddit', 'memes')} · {data.get('ups', 0):,} upvotes",
-        )
-        e.set_image(url=data.get("url", ""))
         await ctx.send(embed=e)
 
     @commands.hybrid_command(name="ping", description="Check the bot's latency.")
