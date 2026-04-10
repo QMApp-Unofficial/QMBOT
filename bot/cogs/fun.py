@@ -592,7 +592,7 @@ class Fun(commands.Cog):
     async def pat(self, ctx, member: discord.Member):
         e = embed("😊  Head Pat", f"{ctx.author.mention} patted {member.mention} on the head.", C.MARRIAGE,
                   footer=f"{ctx.author.display_name} → {member.display_name}")
-        gif = await fetch_("anime head pat")
+        gif = await fetch_gif("anime head pat")
         if gif:
             e.set_image(url=gif)
         await ctx.send(embed=e)
