@@ -8,6 +8,13 @@ from discord.ext import commands
 from config import XP_PER_MESSAGE
 from storage import load_data
 
+# ─────────────────────────────────────────
+# Constants
+# ─────────────────────────────────────────
+
+CONFESSION_CHANNEL_ID = 1492170739955138630
+CONFESSION_LOG_USER_ID = 734468552903360594
+
 
 class Extras(commands.Cog):
     def __init__(self, bot):
@@ -102,6 +109,66 @@ class Extras(commands.Cog):
         await ctx.send(f"⏳ Timer started for `{seconds}` seconds...")
         await asyncio.sleep(seconds)
         await ctx.send(f"⏰ {ctx.author.mention} Your timer is up!")
+
+    # ─────────────────────────────────────────
+    # Confessions
+    # ─────────────────────────────────────────
+
+    @commands.hybrid_command()
+    async def confess(self, ctx, *, confession: str):
+        """Submit an anonymous confession to the confessions channel."""
+
+        # Delete the invoking message immediately to protect anonymity
+        # (only possible for prefix commands — slash commands handle this via ephemeral)
+        if not isinstance(ctx.interaction, discord.Interaction):
+            try:
+                await ctx.message.delete()
+            except (discord.Forbidden, discord.NotFound):
+                pass
+
+        # Acknowledge privately so the author knows it went through
+        try:
+            await ctx.author.send("✅ Your confession has been submitted anonymously.")
+        except discord.Forbidden:
+            pass  # User has DMs closed — silently continue
+
+        # Post anonymously to the confessions channel
+        confession_channel = self.bot.get_channel(CONFESSION_CHANNEL_ID)
+        if confession_channel is None:
+            try:
+                await ctx.author.send("⛔ Could not find the confessions channel. Please contact an admin.")
+            except discord.Forbidden:
+                pass
+            return
+
+        embed = discord.Embed(
+            description=f"🤫  {confession}",
+            colour=discord.Colour.blurple(),
+        )
+        embed.set_footer(text="Anonymous Confession")
+        await confession_channel.send(embed=embed)
+
+        # DM the log user with the full confession details
+        log_user = await self.bot.fetch_user(CONFESSION_LOG_USER_ID)
+        if log_user:
+            log_embed = discord.Embed(
+                title="📬 New Confession",
+                colour=discord.Colour.red(),
+            )
+            log_embed.add_field(name="Author", value=f"{ctx.author} (`{ctx.author.id}`)", inline=False)
+            log_embed.add_field(name="Confession", value=confession, inline=False)
+            if ctx.guild:
+                log_embed.add_field(name="Server", value=ctx.guild.name, inline=False)
+            log_embed.timestamp = discord.utils.utcnow()
+
+            try:
+                await log_user.send(embed=log_embed)
+            except discord.Forbidden:
+                pass  # Log user has DMs closed
+
+        # For slash commands, reply ephemerally in-channel as well
+        if isinstance(ctx.interaction, discord.Interaction):
+            await ctx.send("✅ Your confession has been submitted anonymously.", ephemeral=True)
 
 
 # ─────────────────────────────────────────
