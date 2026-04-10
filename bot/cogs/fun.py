@@ -592,7 +592,16 @@ class Fun(commands.Cog):
     async def pat(self, ctx, member: discord.Member):
         e = embed("😊  Head Pat", f"{ctx.author.mention} patted {member.mention} on the head.", C.MARRIAGE,
                   footer=f"{ctx.author.display_name} → {member.display_name}")
-        gif = await fetch_gif("anime head pat")
+        gif = await fetch_("anime head pat")
+        if gif:
+            e.set_image(url=gif)
+        await ctx.send(embed=e)
+
+    @commands.hybrid_command(name="kiss", description="Kiss someone.")
+    async def kiss(self, ctx, member: discord.Member):
+        e = embed("💋 Kiss", f"{ctx.author.mention} kissed {member.mention}.", C.MARRIAGE,
+                  footer=f"{ctx.author.display_name} → {member.display_name}")
+        gif = await fetch_("anime kiss")
         if gif:
             e.set_image(url=gif)
         await ctx.send(embed=e)
