@@ -597,15 +597,6 @@ class Fun(commands.Cog):
             e.set_image(url=gif)
         await ctx.send(embed=e)
 
-    @commands.hybrid_command(name="kiss", description="Kiss someone.")
-    async def kiss(self, ctx, member: discord.Member):
-        e = embed("💋 Kiss", f"{ctx.author.mention} kissed {member.mention}.", C.MARRIAGE,
-                  footer=f"{ctx.author.display_name} → {member.display_name}")
-        gif = await fetch_("anime kiss")
-        if gif:
-            e.set_image(url=gif)
-        await ctx.send(embed=e)
-
     @commands.hybrid_command(name="bonk", description="Bonk someone. Go to jail.")
     async def bonk(self, ctx, member: discord.Member):
         e = embed("🔨  BONK", f"{ctx.author.mention} bonked {member.mention}. Straight to jail.", C.LOSE,
