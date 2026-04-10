@@ -89,7 +89,6 @@ class Extras(commands.Cog):
 
         await ctx.send(
             f"💬 **{target.display_name}** has sent **{messages:,}** messages since the last reset.\n"
-            f"📊 Stored XP: **{xp:,}**"
         )
 
     @commands.hybrid_command()
